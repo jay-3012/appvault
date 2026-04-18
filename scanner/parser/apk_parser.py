@@ -74,7 +74,11 @@ def parse_apk(apk_path: str) -> ApkMetadata:
     permissions = sorted(list(set(apk.get_permissions() or [])))
 
     # App name
-    app_name = apk.get_app_name() or package_name
+    try:
+        app_name = apk.get_app_name() or package_name
+    except Exception as e:
+        logger.warning("Could not extract app name, using package name: %s", e)
+        app_name = package_name
 
     # Icon (best effort — not all APKs have extractable icons)
     icon_base64 = _extract_icon(apk)

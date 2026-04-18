@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# APK files — do not commit to git
+*.apk
+tests/fixtures/*.apk
+
+# Environment / secrets
+.env
+*.json.key
+scanner-sa-key.json
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/

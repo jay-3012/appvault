@@ -11,3 +11,5 @@ def health():
         "version": "0.1.0",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+#start the server with: uvicorn main:app --host

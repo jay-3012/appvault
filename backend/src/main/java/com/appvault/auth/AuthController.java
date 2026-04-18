@@ -22,9 +22,8 @@ public class AuthController {
     public ResponseEntity<Map<String, String>> register(
             @Valid @RequestBody RegisterRequest request) {
 
-        String message = authService.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Map.of("message", message));
+        Map<String, String> response = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/verify-email")

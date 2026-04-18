@@ -43,8 +43,5 @@ app:
     verification-expiry-hours: 24
   frontend-url: ${FRONTEND_URL:http://localhost:4200}
 
-resend:
-  api-key: ${RESEND_API_KEY:re_local_dev_key}
-
 gcp:
   project-id: ${GCP_PROJECT_ID:local}

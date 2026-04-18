@@ -1,6 +1,7 @@
 package com.appvault.auth;
 
 import com.appvault.auth.dto.*;
+import java.util.Map;
 import com.appvault.auth.email.EmailService;
 import com.appvault.domain.user.*;
 import com.appvault.security.JwtService;
@@ -45,7 +46,7 @@ public class AuthService {
     private int verificationExpiryHours;
 
     @Transactional
-    public String register(RegisterRequest request) {
+    public Map<String, String> register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("Email already registered");
         }
@@ -60,15 +61,6 @@ public class AuthService {
 
         userRepository.save(user);
 
-        // TODO: Remove in production — auto-verify for local/dev testing
-        if (!"prod".equals(System.getenv("APP_ENV"))) {
-            user.setStatus(UserStatus.ACTIVE);
-            userRepository.save(user);
-            log.info("DEV MODE: Auto-verified user {}", user.getEmail());
-            return "Registration successful. Account auto-verified (dev mode).";
-        }
-
-        // Create verification token
         String token = UUID.randomUUID().toString();
         EmailVerification verification = EmailVerification.builder()
                 .user(user)
@@ -77,11 +69,15 @@ public class AuthService {
                 .build();
         emailVerificationRepository.save(verification);
 
-        // Send email async — does not block this thread
+        // Logs the token — in production replace with a real email provider
         emailService.sendVerificationEmail(user.getEmail(), token);
 
         log.info("User registered: {}", user.getEmail());
-        return "Registration successful. Please check your email to verify your account.";
+
+        return Map.of(
+            "message", "Registration successful. Verify your email to continue.",
+            "verificationToken", token  // remove this line when real email is configured
+        );
     }
 
     @Transactional
@@ -113,6 +109,8 @@ public class AuthService {
                             request.getPassword()
                     )
             );
+        } catch (org.springframework.security.authentication.DisabledException e) {
+            throw new IllegalStateException("Please verify your email before logging in");
         } catch (Exception e) {
             throw new BadCredentialsException("Invalid email or password");
         }

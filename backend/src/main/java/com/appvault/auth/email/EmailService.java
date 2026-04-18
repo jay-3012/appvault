@@ -5,11 +5,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import com.resend.Resend;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -69,38 +67,20 @@ public class EmailService {
 
     private void sendEmail(String to, String subject, String html) {
         try {
-            String body = """
-                    {
-                      "from": "%s",
-                      "to": ["%s"],
-                      "subject": "%s",
-                      "html": "%s"
-                    }
-                    """.formatted(
-                    fromEmail,
-                    to,
-                    subject,
-                    html.replace("\"", "\\\"").replace("\n", "")
-            );
+            Resend resend = new Resend(resendApiKey.trim());
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.resend.com/emails"))
-                    .header("Authorization", "Bearer " + resendApiKey)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
+            CreateEmailOptions options = CreateEmailOptions.builder()
+                    .from(fromEmail)
+                    .to(to)
+                    .subject(subject)
+                    .html(html)
                     .build();
 
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString());
+            CreateEmailResponse response = resend.emails().send(options);
+            log.info("Email sent triggered to {}: ID {}", to, response.getId());
 
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                log.info("Email sent to {}: {}", to, subject);
-            } else {
-                log.error("Email failed to {}: HTTP {} — {}",
-                        to, response.statusCode(), response.body());
-            }
         } catch (Exception e) {
-            log.error("Email send exception to {}: {}", to, e.getMessage());
+            log.error("Email SDK exception sending to {}: {}", to, e.getMessage());
         }
     }
 }

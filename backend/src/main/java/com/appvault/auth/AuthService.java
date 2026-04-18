@@ -60,6 +60,14 @@ public class AuthService {
 
         userRepository.save(user);
 
+        // TODO: Remove in production — auto-verify for local/dev testing
+        if (!"prod".equals(System.getenv("APP_ENV"))) {
+            user.setStatus(UserStatus.ACTIVE);
+            userRepository.save(user);
+            log.info("DEV MODE: Auto-verified user {}", user.getEmail());
+            return "Registration successful. Account auto-verified (dev mode).";
+        }
+
         // Create verification token
         String token = UUID.randomUUID().toString();
         EmailVerification verification = EmailVerification.builder()

@@ -8,4 +8,5 @@ public class AppVaultApplication {
     public static void main(String[] args) {
         SpringApplication.run(AppVaultApplication.class, args);
     }
+    
 }

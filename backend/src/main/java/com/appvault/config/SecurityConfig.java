@@ -41,7 +41,8 @@ public class SecurityConfig {
                     "/auth/register",
                     "/auth/verify-email",
                     "/auth/login",
-                    "/auth/refresh"
+                    "/auth/refresh",
+                    "/internal/scanner-callback"
                 ).permitAll()
                 // Admin only
                 .requestMatchers("/admin/**")

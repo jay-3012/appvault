@@ -45,3 +45,7 @@ app:
 
 gcp:
   project-id: ${GCP_PROJECT_ID:local}
+
+scanner:
+  hmac-secret: ${SCANNER_HMAC_SECRET:local_dev_hmac_secret_32_chars_min}
+  callback-url: ${SCANNER_CALLBACK_URL:http://localhost:8000/scan}

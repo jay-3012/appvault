@@ -1,21 +1,16 @@
 import logging
 import os
-import tempfile
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-from parser import (
-    parse_apk,
-    validate_version_code,
-    ApkParseError,
-    VersionCodeError,
-    download_apk_from_gcs,
-    cleanup_apk,
-)
+from parser import parse_apk, download_apk_from_gcs, cleanup_apk, ApkParseError
+from security.hmac_auth import verify_signature
+from tasks import scan_apk_task
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,42 +21,28 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("AppVault Scanner starting up")
+    logger.info("AppVault Scanner v0.3.0 starting")
     yield
     logger.info("AppVault Scanner shutting down")
 
 
-app = FastAPI(
-    title="AppVault Scanner",
-    version="0.2.0",
-    lifespan=lifespan
-)
+app = FastAPI(title="AppVault Scanner", version="0.3.0", lifespan=lifespan)
 
 
-# ── Request / Response models ──────────────────────────────────────────────
+# ── Request models ─────────────────────────────────────────────────────────
 
-class ParseFromUrlRequest(BaseModel):
-    apk_url: str
-    existing_version_code: int = 0  # 0 means first submission
+class ScanRequest(BaseModel):
+    appId: str
+    versionId: str
+    apkUrl: str
+    callbackId: str
 
-    @field_validator("apk_url")
+    @field_validator("apkUrl")
     @classmethod
     def must_be_gcs_url(cls, v):
         if not v.startswith("gs://"):
-            raise ValueError("apk_url must be a GCS URL starting with gs://")
+            raise ValueError("apkUrl must start with gs://")
         return v
-
-
-class ParseResponse(BaseModel):
-    package_name: str
-    version_code: int
-    version_name: str
-    min_sdk: int
-    target_sdk: int
-    cert_fingerprint: str
-    permissions: list[str]
-    app_name: str
-    icon_base64: str | None = None
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
@@ -71,79 +52,72 @@ def health():
     return {
         "status": "UP",
         "service": "appvault-scanner",
-        "version": "0.2.0",
-        "timestamp": datetime.utcnow().isoformat()
+        "version": "0.3.0",
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
-@app.post("/parse", response_model=ParseResponse)
-def parse_from_gcs_url(request: ParseFromUrlRequest):
+@app.post("/scan", status_code=202)
+async def receive_scan_job(request: Request):
     """
-    Downloads an APK from GCS and returns parsed metadata.
-    Validates version code if existing_version_code > 0.
+    Receives a scan job from the main platform.
+    Verifies HMAC signature, then enqueues the scan as a Celery task.
+    Returns 202 immediately — scan runs async.
     """
-    apk_path = None
+    raw_body = await request.body()
+
+    # Verify HMAC signature
+    signature = request.headers.get("X-Signature", "")
+    if not signature:
+        raise HTTPException(status_code=401, detail="Missing X-Signature header")
+
+    if not verify_signature(raw_body, signature):
+        logger.warning("Invalid HMAC signature on /scan request")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    # Parse body after verification
     try:
-        # Download from GCS
-        apk_path = download_apk_from_gcs(request.apk_url)
-
-        # Parse
-        metadata = parse_apk(apk_path)
-
-        # Validate version code if this is an update
-        if request.existing_version_code > 0:
-            validate_version_code(
-                metadata.version_code,
-                request.existing_version_code
-            )
-
-        return ParseResponse(
-            package_name=metadata.package_name,
-            version_code=metadata.version_code,
-            version_name=metadata.version_name,
-            min_sdk=metadata.min_sdk,
-            target_sdk=metadata.target_sdk,
-            cert_fingerprint=metadata.cert_fingerprint,
-            permissions=metadata.permissions,
-            app_name=metadata.app_name,
-            icon_base64=metadata.icon_base64,
-        )
-
-    except VersionCodeError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-
-    except ApkParseError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
+        import json
+        data = json.loads(raw_body)
+        scan_req = ScanRequest(**data)
     except Exception as e:
-        logger.error("Unexpected error during parse: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal parse error")
+        raise HTTPException(status_code=400, detail=f"Invalid request body: {e}")
 
-    finally:
-        if apk_path:
-            cleanup_apk(apk_path)
+    # Enqueue async task
+    scan_apk_task.delay(
+        app_id=scan_req.appId,
+        version_id=scan_req.versionId,
+        apk_url=scan_req.apkUrl,
+        callback_id=scan_req.callbackId,
+    )
+
+    logger.info(
+        "Scan job enqueued: appId=%s callbackId=%s",
+        scan_req.appId, scan_req.callbackId
+    )
+
+    return {
+        "message": "Scan job accepted",
+        "callbackId": scan_req.callbackId,
+    }
 
 
-@app.post("/parse/upload", response_model=ParseResponse)
+@app.post("/parse/upload")
 async def parse_uploaded_file(
     file: UploadFile = File(...),
-    existing_version_code: int = 0
+    existing_version_code: int = 0,
 ):
-    """
-    Accepts a direct APK upload (for local testing without GCS).
-    Do not expose this endpoint publicly in production.
-    """
+    """Direct APK upload for testing. Do not expose publicly in production."""
+    import tempfile, os
+    from parser import validate_version_code, VersionCodeError
+
     if not file.filename.endswith(".apk"):
         raise HTTPException(status_code=400, detail="File must be an APK")
 
     apk_path = None
     try:
-        # Write upload to temp file
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".apk", delete=False, prefix="appvault_upload_"
-        )
-        content = await file.read()
-        tmp.write(content)
+        tmp = tempfile.NamedTemporaryFile(suffix=".apk", delete=False)
+        tmp.write(await file.read())
         tmp.flush()
         tmp.close()
         apk_path = tmp.name
@@ -151,44 +125,29 @@ async def parse_uploaded_file(
         metadata = parse_apk(apk_path)
 
         if existing_version_code > 0:
-            validate_version_code(
-                metadata.version_code,
-                existing_version_code
-            )
+            validate_version_code(metadata.version_code, existing_version_code)
 
-        return ParseResponse(
-            package_name=metadata.package_name,
-            version_code=metadata.version_code,
-            version_name=metadata.version_name,
-            min_sdk=metadata.min_sdk,
-            target_sdk=metadata.target_sdk,
-            cert_fingerprint=metadata.cert_fingerprint,
-            permissions=metadata.permissions,
-            app_name=metadata.app_name,
-            icon_base64=metadata.icon_base64,
-        )
+        from scanner.risk_analyzer import analyze_risk
+        risk = analyze_risk(metadata)
+
+        return {
+            "package_name": metadata.package_name,
+            "version_code": metadata.version_code,
+            "version_name": metadata.version_name,
+            "min_sdk": metadata.min_sdk,
+            "target_sdk": metadata.target_sdk,
+            "cert_fingerprint": metadata.cert_fingerprint,
+            "permissions": metadata.permissions,
+            "app_name": metadata.app_name,
+            "scan_status": risk.scan_status.value,
+            "risk_score": risk.risk_score,
+            "flags": risk.flags,
+        }
 
     except VersionCodeError as e:
         raise HTTPException(status_code=422, detail=str(e))
-
     except ApkParseError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        logger.error("Unexpected error during upload parse: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal parse error")
-
     finally:
         if apk_path:
             cleanup_apk(apk_path)
-
-
-# ── Global error handler ───────────────────────────────────────────────────
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    logger.error("Unhandled exception: %s", exc, exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "An unexpected error occurred"}
-    )

@@ -33,6 +33,11 @@ spring:
       port: ${SPRING_REDIS_PORT:6379}
       timeout: 2000ms
 
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+
 app:
   jwt:
     secret: ${JWT_SECRET:local_dev_secret_min_32_chars_long_replace_in_prod}
@@ -45,7 +50,9 @@ app:
 
 gcp:
   project-id: ${GCP_PROJECT_ID:local}
+  storage:
+    bucket: ${GCS_BUCKET:appvault-files}
 
 scanner:
   hmac-secret: ${SCANNER_HMAC_SECRET:local_dev_hmac_secret_32_chars_min}
-  callback-url: ${SCANNER_CALLBACK_URL:http://localhost:8000/scan}
+  callback-url: ${SCANNER_URL:https://scanner.appvault.online/scan}

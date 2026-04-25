@@ -1,0 +1,299 @@
+{
+  "info": {
+    "name": "AppVault — Sprint 5",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "BASE_URL", "value": "https://appvault.online" },
+    { "key": "ACCESS_TOKEN", "value": "" },
+    { "key": "APP_ID", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1 — Auth",
+      "item": [
+        {
+          "name": "1.1 Register Developer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/auth/register", "host": ["{{BASE_URL}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Dev User\",\n  \"email\": \"dev@test.com\",\n  \"password\": \"Password123!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "1.2 Verify Email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{BASE_URL}}/auth/verify-email?token=PASTE_TOKEN_FROM_REGISTER_RESPONSE",
+              "host": ["{{BASE_URL}}"],
+              "path": ["auth", "verify-email"],
+              "query": [{ "key": "token", "value": "PASTE_TOKEN_FROM_REGISTER_RESPONSE" }]
+            }
+          }
+        },
+        {
+          "name": "1.3 Login (saves token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.accessToken) {",
+                  "    pm.collectionVariables.set('ACCESS_TOKEN', json.accessToken);",
+                  "    console.log('Token saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/auth/login", "host": ["{{BASE_URL}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"dev@test.com\",\n  \"password\": \"Password123!\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 — Apps",
+      "item": [
+        {
+          "name": "2.1 Create App (saves appId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) {",
+                  "    pm.collectionVariables.set('APP_ID', json.id);",
+                  "    console.log('App ID saved:', json.id);",
+                  "}",
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Status is DRAFT', () => pm.expect(json.status).to.eql('DRAFT'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/developer/apps", "host": ["{{BASE_URL}}"], "path": ["developer", "apps"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"My Test App\",\n  \"shortDescription\": \"A test application for Sprint 5\",\n  \"fullDescription\": \"Full description of the app\",\n  \"category\": \"TOOLS\",\n  \"contentRating\": \"EVERYONE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.2 List Apps",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/developer/apps", "host": ["{{BASE_URL}}"], "path": ["developer", "apps"] }
+          }
+        },
+        {
+          "name": "2.3 Get Single App",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('App ID matches', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('APP_ID')));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }],
+            "url": { "raw": "{{BASE_URL}}/developer/apps/{{APP_ID}}", "host": ["{{BASE_URL}}"], "path": ["developer", "apps", "{{APP_ID}}"] }
+          }
+        },
+        {
+          "name": "2.4 Upload APK Version",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Status is PENDING_SCAN', () => pm.expect(pm.response.json().status).to.eql('PENDING_SCAN'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }],
+            "url": {
+              "raw": "{{BASE_URL}}/developer/apps/{{APP_ID}}/versions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["developer", "apps", "{{APP_ID}}", "versions"]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "versionName", "value": "1.0.0", "type": "text" },
+                { "key": "changelog", "value": "First release", "type": "text" },
+                { "key": "apkFile", "type": "file", "src": "/path/to/your/test.apk" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2.5 List Versions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }],
+            "url": {
+              "raw": "{{BASE_URL}}/developer/apps/{{APP_ID}}/versions",
+              "host": ["{{BASE_URL}}"],
+              "path": ["developer", "apps", "{{APP_ID}}", "versions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 — Security Checks",
+      "item": [
+        {
+          "name": "3.1 No Token → 401/403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Blocked without token', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([401, 403]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{BASE_URL}}/developer/apps", "host": ["{{BASE_URL}}"], "path": ["developer", "apps"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Hack Attempt\",\n  \"contentRating\": \"EVERYONE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.2 Missing contentRating → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 400 for missing contentRating', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/developer/apps", "host": ["{{BASE_URL}}"], "path": ["developer", "apps"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Missing Rating App\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.3 Missing title → 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 400 for missing title', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }
+            ],
+            "url": { "raw": "{{BASE_URL}}/developer/apps", "host": ["{{BASE_URL}}"], "path": ["developer", "apps"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contentRating\": \"EVERYONE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.4 Wrong App ID → 400/404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns error for wrong app ID', () => {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 500]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN}}" }],
+            "url": {
+              "raw": "{{BASE_URL}}/developer/apps/00000000-0000-0000-0000-000000000000",
+              "host": ["{{BASE_URL}}"],
+              "path": ["developer", "apps", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

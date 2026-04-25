@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 @Entity
 @Table(name = "apps")
 @Getter
@@ -39,11 +42,13 @@ public class App {
     private String category;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "content_rating", columnDefinition = "content_rating")
     @Builder.Default
     private ContentRating contentRating = ContentRating.EVERYONE;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(columnDefinition = "app_status")
     @Builder.Default
     private AppStatus status = AppStatus.DRAFT;

@@ -55,11 +55,13 @@ public class AppVersion {
     private List<String> permissions;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(columnDefinition = "version_status")
     @Builder.Default
     private VersionStatus status = VersionStatus.PENDING_SCAN;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(columnDefinition = "release_track")
     private ReleaseTrack track;
 

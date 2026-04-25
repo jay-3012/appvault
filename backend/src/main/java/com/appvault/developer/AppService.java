@@ -5,6 +5,9 @@ import com.appvault.domain.app.*;
 import com.appvault.domain.user.User;
 import com.appvault.scanner.ScanDispatchService;
 import com.appvault.storage.GcsStorageService;
+import com.appvault.domain.app.AppTester;
+import com.appvault.domain.app.AppTesterRepository;
+import com.appvault.developer.dto.TesterRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -12,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -25,6 +29,7 @@ public class AppService {
     private final AppOwnershipRepository ownershipRepository;
     private final GcsStorageService storageService;
     private final ScanDispatchService scanDispatchService;
+    private final AppTesterRepository testerRepository;
 
     @Transactional
     public AppResponse createApp(CreateAppRequest request, User developer) {
@@ -114,6 +119,141 @@ public class AppService {
                 .findByAppIdOrderByVersionCodeDesc(appId)
                 .stream()
                 .map(VersionResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    // ── Promote version ────────────────────────────────────────────────────
+
+    @Transactional
+    public VersionResponse promoteVersion(UUID appId, UUID versionId,
+                                           User developer) {
+        App app = appRepository.findByIdAndDeveloperId(appId, developer.getId())
+                .orElseThrow(() ->
+                        new IllegalArgumentException("App not found or access denied"));
+
+        AppVersion version = versionRepository
+                .findByIdAndAppId(versionId, appId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Version not found"));
+
+        // Determine next track
+        ReleaseTrack nextTrack = nextTrack(version.getTrack(), version.getStatus());
+
+        // Deactivate current active version on the next track
+        versionRepository
+                .findByAppIdAndTrackAndIsActiveTrueOrderByVersionCodeDesc(
+                        appId, nextTrack)
+                .forEach(v -> {
+                    v.setIsActive(false);
+                    v.setStatus(VersionStatus.SUPERSEDED);
+                    versionRepository.save(v);
+                });
+
+        // Promote
+        version.setTrack(nextTrack);
+        version.setIsActive(true);
+        versionRepository.save(version);
+
+        log.info("Version promoted: {} → {} appId={}", versionId, nextTrack, appId);
+        return VersionResponse.from(version);
+    }
+
+    private ReleaseTrack nextTrack(ReleaseTrack current, VersionStatus status) {
+        if (status == VersionStatus.APPROVED && current == ReleaseTrack.ALPHA) {
+            return ReleaseTrack.BETA;
+        }
+        if (current == ReleaseTrack.ALPHA && status != VersionStatus.APPROVED) {
+            throw new IllegalStateException(
+                    "Version must be APPROVED before promotion");
+        }
+        if (current == ReleaseTrack.BETA) {
+            return ReleaseTrack.PRODUCTION;
+        }
+        if (current == ReleaseTrack.PRODUCTION) {
+            throw new IllegalStateException(
+                    "Version is already in PRODUCTION");
+        }
+        throw new IllegalStateException(
+                "Version is not in a promotable state. " +
+                "Current track: " + current + ", status: " + status);
+    }
+
+    // ── Rollback ────────────────────────────────────────────────────────────
+
+    @Transactional
+    public VersionResponse rollback(UUID appId, UUID targetVersionId,
+                                     User developer) {
+        appRepository.findByIdAndDeveloperId(appId, developer.getId())
+                .orElseThrow(() ->
+                        new IllegalArgumentException("App not found or access denied"));
+
+        AppVersion targetVersion = versionRepository
+                .findByIdAndAppId(targetVersionId, appId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("Version not found"));
+
+        if (targetVersion.getTrack() != ReleaseTrack.PRODUCTION) {
+            throw new IllegalStateException(
+                    "Rollback only applies to PRODUCTION versions");
+        }
+
+        // Deactivate all currently active production versions
+        versionRepository
+                .findByAppIdAndTrackAndIsActiveTrueOrderByVersionCodeDesc(
+                        appId, ReleaseTrack.PRODUCTION)
+                .forEach(v -> {
+                    v.setIsActive(false);
+                    versionRepository.save(v);
+                });
+
+        // Activate the target version
+        targetVersion.setIsActive(true);
+        versionRepository.save(targetVersion);
+
+        log.info("Rollback: appId={} → versionId={}", appId, targetVersionId);
+        return VersionResponse.from(targetVersion);
+    }
+
+    // ── Testers ─────────────────────────────────────────────────────────────
+
+    @Transactional
+    public Map<String, String> addTester(UUID appId, TesterRequest request,
+                                          User developer) {
+        appRepository.findByIdAndDeveloperId(appId, developer.getId())
+                .orElseThrow(() ->
+                        new IllegalArgumentException("App not found or access denied"));
+
+        if (testerRepository.existsByAppIdAndEmailAndTrack(
+                appId, request.getEmail(), request.getTrack())) {
+            throw new IllegalArgumentException(
+                    "Tester already added for this track");
+        }
+
+        App app = appRepository.findById(appId).orElseThrow();
+        AppTester tester = AppTester.builder()
+                .app(app)
+                .email(request.getEmail())
+                .track(request.getTrack())
+                .build();
+        testerRepository.save(tester);
+
+        return Map.of("message",
+                "Tester added: " + request.getEmail() +
+                " for track " + request.getTrack());
+    }
+
+    public List<Map<String, String>> listTesters(UUID appId, User developer) {
+        appRepository.findByIdAndDeveloperId(appId, developer.getId())
+                .orElseThrow(() ->
+                        new IllegalArgumentException("App not found or access denied"));
+
+        return testerRepository.findByAppId(appId)
+                .stream()
+                .map(t -> Map.of(
+                        "email", t.getEmail(),
+                        "track", t.getTrack().name(),
+                        "addedAt", t.getAddedAt().toString()
+                ))
                 .collect(Collectors.toList());
     }
 }

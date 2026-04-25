@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -67,5 +68,44 @@ public class AppController {
             @AuthenticationPrincipal User developer) {
 
         return ResponseEntity.ok(appService.listVersions(appId, developer));
+    }
+
+    @PostMapping("/{appId}/versions/{versionId}/promote")
+    public ResponseEntity<VersionResponse> promoteVersion(
+            @PathVariable UUID appId,
+            @PathVariable UUID versionId,
+            @AuthenticationPrincipal User developer) {
+
+        return ResponseEntity.ok(
+                appService.promoteVersion(appId, versionId, developer));
+    }
+
+    @PostMapping("/{appId}/versions/{versionId}/rollback")
+    public ResponseEntity<VersionResponse> rollback(
+            @PathVariable UUID appId,
+            @PathVariable UUID versionId,
+            @AuthenticationPrincipal User developer) {
+
+        return ResponseEntity.ok(
+                appService.rollback(appId, versionId, developer));
+    }
+
+    @PostMapping("/{appId}/testers")
+    public ResponseEntity<Map<String, String>> addTester(
+            @PathVariable UUID appId,
+            @Valid @RequestBody TesterRequest request,
+            @AuthenticationPrincipal User developer) {
+
+        return ResponseEntity.ok(
+                appService.addTester(appId, request, developer));
+    }
+
+    @GetMapping("/{appId}/testers")
+    public ResponseEntity<List<Map<String, String>>> listTesters(
+            @PathVariable UUID appId,
+            @AuthenticationPrincipal User developer) {
+
+        return ResponseEntity.ok(
+                appService.listTesters(appId, developer));
     }
 }

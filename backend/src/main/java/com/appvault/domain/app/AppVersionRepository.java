@@ -15,4 +15,9 @@ public interface AppVersionRepository extends JpaRepository<AppVersion, UUID> {
     Optional<Integer> findMaxVersionCodeByAppId(UUID appId);
 
     Optional<AppVersion> findByIdAndAppId(UUID id, UUID appId);
+
+    List<AppVersion> findByStatusOrderByCreatedAtAsc(VersionStatus status);
+
+    List<AppVersion> findByAppIdAndTrackAndIsActiveTrueOrderByVersionCodeDesc(
+            UUID appId, ReleaseTrack track);
 }

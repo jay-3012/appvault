@@ -1,5 +1,6 @@
 package com.appvault.scanner;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -10,15 +11,12 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 
 @Component
+@Slf4j // ← ADD THIS
 public class HmacVerifier {
 
     @Value("${scanner.hmac-secret}")
     private String hmacSecret;
 
-    /**
-     * Verifies the HMAC-SHA256 signature on an incoming scanner callback.
-     * Uses constant-time comparison to prevent timing attacks.
-     */
     public boolean verify(byte[] rawBody, String receivedSignature) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");

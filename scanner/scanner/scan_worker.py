@@ -103,7 +103,6 @@ def run_scan(app_id: str, version_id: str, apk_url: str, callback_id: str) -> No
         if apk_path:
             cleanup_apk(apk_path)
 
-
 def _send_callback(
     app_id: str,
     version_id: str,
@@ -136,12 +135,31 @@ def _send_callback(
     if error:
         payload["error"] = error
 
-    headers = make_signed_headers(payload)
+    # Serialize ONCE — these exact bytes are both signed and sent
+    payload_bytes = json.dumps(
+        payload, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+
+    # Sign the exact bytes being sent
+    secret = get_secret()
+    signature = hmac_lib.new(
+        secret.encode("utf-8"),
+        payload_bytes,
+        hashlib.sha256
+    ).hexdigest()
+
+    headers = {
+        "X-Signature": signature,
+        "Content-Type": "application/json",
+    }
+
+    logger.info("Sending callback: callbackId=%s signature=%s...",
+                callback_id, signature[:16])
 
     try:
         response = httpx.post(
             MAIN_PLATFORM_CALLBACK_URL,
-            json=payload,
+            content=payload_bytes,   # send raw bytes, NOT json=payload
             headers=headers,
             timeout=30.0,
         )

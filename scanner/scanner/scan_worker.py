@@ -9,6 +9,7 @@ import httpx
 from parser import parse_apk, download_apk_from_gcs, cleanup_apk, ApkParseError
 from scanner.risk_analyzer import analyze_risk, RiskReport, ScanStatus
 from security.hmac_auth import make_signed_headers
+from security.hmac_auth import get_secret          # ← ADD THIS LINE
 
 logger = logging.getLogger(__name__)
 

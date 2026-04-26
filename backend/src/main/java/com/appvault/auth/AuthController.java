@@ -9,6 +9,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import com.appvault.domain.user.Role;
+import com.appvault.domain.user.User;
+import com.appvault.domain.user.UserRepository;
+
 import java.util.Map;
 
 @RestController
@@ -17,6 +21,7 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final UserRepository userRepository;
 
     @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(
@@ -57,5 +62,16 @@ public class AuthController {
         String token = authHeader.substring(7);
         authService.logout(token);
         return ResponseEntity.ok(Map.of("message", "Logged out successfully"));
+    }
+
+    @PostMapping("/become-developer")
+    public ResponseEntity<Map<String, String>> becomeDeveloper(
+            @AuthenticationPrincipal User user) {
+
+        user.setRole(Role.DEVELOPER);
+        userRepository.save(user);
+        return ResponseEntity.ok(Map.of(
+            "message", "Account upgraded to DEVELOPER. Please log in again for updated token."
+        ));
     }
 }
